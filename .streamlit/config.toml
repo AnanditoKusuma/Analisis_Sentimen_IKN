@@ -1,0 +1,2 @@
+echo [global] > .streamlit/config.toml
+echo pythonVersion = \"3.10\" >> .streamlit/config.toml
