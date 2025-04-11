@@ -6,3 +6,4 @@ nltk
 seaborn
 matplotlib
 numpy
+wordcloud
