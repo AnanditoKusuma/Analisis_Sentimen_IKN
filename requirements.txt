@@ -1,5 +1,5 @@
 streamlit==1.44.1
-gensim==4.3.1
+gensim==4.1.2
 lightgbm==4.6.0
 pandas
 nltk
