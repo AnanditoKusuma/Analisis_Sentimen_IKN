@@ -1,9 +1,8 @@
-streamlit==1.25.0
-gensim==4.2.0
-lightgbm==3.3.5
-pandas==1.5.3
-nltk==3.7
-seaborn==0.12.2
-matplotlib==3.5.3
-numpy==1.23.5
-wordcloud==1.8.2.2
+streamlit==1.44.1
+gensim==4.3.1
+lightgbm==4.6.0
+pandas
+nltk
+seaborn
+matplotlib
+numpy

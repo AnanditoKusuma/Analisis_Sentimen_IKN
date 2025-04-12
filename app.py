@@ -1,50 +1,63 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import re
+import string
 import matplotlib.pyplot as plt
 import seaborn as sns
-import re, string, pickle, base64
-from nltk.tokenize import RegexpTokenizer
-from nltk.corpus import stopwords
-from gensim.models import FastText
 from wordcloud import WordCloud
+from nltk.corpus import stopwords
+from nltk.tokenize import RegexpTokenizer
+import pickle
+from gensim.models import FastText
 import nltk
 
-nltk.download('stopwords')
+# NLTK
+nltk.download("stopwords")
 
-# Konfigurasi
-st.set_page_config(page_title="Analisis Sentimen IKN", layout="wide", page_icon="📊")
+# ---------------------- Config Awal ---------------------- #
+st.set_page_config(
+    page_title="Analisis Sentimen IKN",
+    layout="wide",
+    page_icon="📊"
+)
 
-# Mode tema
-mode = st.sidebar.radio("🌓 Tema", ["🌞 Terang", "🌙 Gelap"], horizontal=True)
-darkmode = (mode == "🌙 Gelap")
+# ---------------------- Sidebar Tema ---------------------- #
+with st.sidebar:
+    st.title("⚙️ Pengaturan")
+    tema = st.radio("🎨 Pilih Tema", ["Terang", "Gelap"])
+    visual = st.radio("📊 Pilih Visualisasi", ["Bar Chart", "Pie Chart"])
 
-if darkmode:
-    st.markdown("""
-        <style>
-        body, .stApp { background-color: #0e1117; color: white; }
-        </style>
-    """, unsafe_allow_html=True)
-else:
-    st.markdown("""
-        <style>
-        body, .stApp { background-color: #ffffff; color: black; }
-        </style>
-    """, unsafe_allow_html=True)
+# ---------------------- Custom CSS ---------------------- #
+dark_mode = tema == "Gelap"
 
-# HEADER
-col1, col2 = st.columns([1, 9])
-with col1:
-    st.image("LOGO UNISNU.png", width=90)
-with col2:
-    st.markdown("""
-        <h1 style='margin-bottom:0;'>📊 Analisis Sentimen IKN</h1>
-        <h5 style='margin-top:0; color:#00cc88;'>Metode: FastText + LightGBM | Akurasi: 83.27%</h5>
-    """, unsafe_allow_html=True)
+st.markdown(
+    f"""
+    <style>
+    body {{
+        background-color: {"#0e1117" if dark_mode else "#ffffff"};
+        color: {"#f0f2f6" if dark_mode else "#000000"};
+    }}
+    .stApp {{
+        background-color: {"#0e1117" if dark_mode else "#ffffff"};
+        color: {"#f0f2f6" if dark_mode else "#000000"};
+    }}
+    h1, h2, h3, h4, h5, h6, .stText {{
+        color: {"#f0f2f6" if dark_mode else "#000000"};
+    }}
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
-st.markdown("---")
+# ---------------------- Header ---------------------- #
+col_logo, col_judul = st.columns([0.1, 0.9])
+with col_logo:
+    st.image("LOGO UNISNU.png", width=100)
+with col_judul:
+    st.title("📊 Aplikasi Analisis Sentimen IKN dengan FastText + LightGBM")
 
-# Load model
+# ---------------------- Load Model ---------------------- #
 @st.cache_resource
 def load_models():
     fasttext_model = FastText.load("fasttext_model.bin")
@@ -54,7 +67,7 @@ def load_models():
 
 fasttext_model, lgb_model = load_models()
 
-# Preprocessing
+# ---------------------- Preprocessing ---------------------- #
 tokenizer = RegexpTokenizer(r'\w+')
 stop_words = set(stopwords.words('indonesian'))
 
@@ -73,91 +86,69 @@ def vectorize(text):
     vecs = [fasttext_model.wv[w] for w in tokens if w in fasttext_model.wv]
     return np.mean(vecs, axis=0) if vecs else np.zeros(fasttext_model.vector_size)
 
-# Input manual
-st.subheader("📝 Prediksi Manual Tweet")
-input_text = st.text_area("Masukkan tweet:")
+# ---------------------- Input Manual ---------------------- #
+st.subheader("✍️ Input Manual Tweet")
+input_text = st.text_area("Masukkan tweet Anda:")
 
-if st.button("🔍 Prediksi"):
+if st.button("Prediksi Sentimen"):
     clean = clean_text(input_text)
-    vec = vectorize(clean)
-    hasil = lgb_model.predict([vec])[0]
+    vektor = vectorize(clean)
+    hasil = lgb_model.predict([vektor])[0]
     label = "Positif 😊" if hasil == 1 else "Negatif 😠"
-    st.success(f"Prediksi Sentimen: **{label}**")
+    st.success(f"Hasil Prediksi Sentimen: **{label}**")
 
-# Upload CSV
+# ---------------------- Upload CSV ---------------------- #
 st.subheader("📂 Upload File CSV")
-uploaded_file = st.file_uploader("Unggah file CSV dengan kolom 'tweet'", type=["csv"])
+uploaded_file = st.file_uploader("Upload file CSV (harus ada kolom 'tweet')", type=["csv"])
 
 if uploaded_file:
     df = pd.read_csv(uploaded_file)
-    if 'tweet' not in df.columns:
-        st.error("❌ Kolom 'tweet' tidak ditemukan.")
+    df['clean_tweet'] = df['tweet'].apply(clean_text)
+    df['vector'] = df['clean_tweet'].apply(lambda x: vectorize(x))
+    X = np.vstack(df['vector'].values)
+    df['prediksi'] = lgb_model.predict(X)
+    df['sentimen'] = df['prediksi'].map({0: 'Negatif', 1: 'Positif'})
+
+    st.subheader("📄 Hasil Prediksi")
+    st.dataframe(df[['tweet', 'sentimen']])
+
+    # Visualisasi Distribusi Sentimen
+    st.subheader("📊 Distribusi Sentimen")
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    if visual == "Bar Chart":
+        sns.countplot(x='sentimen', data=df, palette='Set2', ax=ax)
+        ax.set_title("Bar Chart Sentimen")
     else:
-        df['clean_tweet'] = df['tweet'].apply(clean_text)
-        df['vector'] = df['clean_tweet'].apply(vectorize)
-        X = np.vstack(df['vector'].values)
-        df['prediksi'] = lgb_model.predict(X)
-        df['sentimen'] = df['prediksi'].map({0: 'Negatif', 1: 'Positif'})
+        df['sentimen'].value_counts().plot.pie(
+            autopct='%1.1f%%', colors=['#ff9999', '#66b3ff'], startangle=90, ax=ax
+        )
+        ax.set_ylabel('')
+        ax.set_title("Pie Chart Sentimen")
+    st.pyplot(fig)
 
-        # Ringkasan
-        total = len(df)
-        positif = sum(df['sentimen'] == 'Positif')
-        negatif = sum(df['sentimen'] == 'Negatif')
-        st.success(f"""
-        ✅ Total Tweet: {total}  
-        😊 Positif: {positif} ({(positif/total)*100:.1f}%)  
-        😠 Negatif: {negatif} ({(negatif/total)*100:.1f}%)
-        """)
+    # WordCloud
+    st.subheader("☁️ Word Cloud")
+    col1, col2 = st.columns(2)
 
-        # Tabel hasil
-        st.subheader("📋 Tabel Hasil Prediksi")
-        st.dataframe(df[['tweet', 'sentimen']])
+    with col1:
+        st.markdown("**Positif**")
+        positif = " ".join(df[df['sentimen'] == 'Positif']['clean_tweet'])
+        wc_pos = WordCloud(width=400, height=300, background_color='white' if not dark_mode else 'black').generate(positif)
+        st.image(wc_pos.to_array(), use_container_width=True)
 
-        # Visualisasi distribusi
-        st.subheader("📊 Distribusi Sentimen")
-        chart_type = st.radio("Pilih Grafik", ["Pie", "Bar"], horizontal=True)
-        colors = ['#33cc99', '#ff4b4b']
+    with col2:
+        st.markdown("**Negatif**")
+        negatif = " ".join(df[df['sentimen'] == 'Negatif']['clean_tweet'])
+        wc_neg = WordCloud(width=400, height=300, background_color='white' if not dark_mode else 'black').generate(negatif)
+        st.image(wc_neg.to_array(), use_container_width=True)
 
-        if chart_type == "Pie":
-            fig, ax = plt.subplots(figsize=(3.5, 3.5))
-            df['sentimen'].value_counts().plot.pie(autopct='%1.1f%%', startangle=90,
-                                                   colors=colors, textprops={'fontsize': 12},
-                                                   wedgeprops={'edgecolor': 'white'}, ax=ax)
-            ax.set_ylabel('')
-            st.pyplot(fig)
-        else:
-            fig, ax = plt.subplots(figsize=(5, 3))
-            sns.countplot(x='sentimen', data=df, palette=colors, ax=ax)
-            ax.bar_label(ax.containers[0])
-            st.pyplot(fig)
+    # Unduh Hasil
+    st.subheader("⬇️ Unduh Hasil Prediksi")
+    csv = df[['tweet', 'sentimen']].to_csv(index=False).encode('utf-8')
+    st.download_button("📥 Download CSV", data=csv, file_name='hasil_prediksi.csv', mime='text/csv')
 
-        # Word Cloud
-        st.subheader("☁️ Word Cloud")
-        col1, col2 = st.columns(2)
-
-        with col1:
-            st.markdown("### 😊 Positif")
-            positif = " ".join(df[df['sentimen'] == 'Positif']['clean_tweet'])
-            wc_pos = WordCloud(width=400, height=300, background_color='white', colormap='Greens').generate(positif)
-            fig1, ax1 = plt.subplots()
-            ax1.imshow(wc_pos, interpolation='bilinear')
-            ax1.axis("off")
-            st.pyplot(fig1)
-
-        with col2:
-            st.markdown("### 😠 Negatif")
-            negatif = " ".join(df[df['sentimen'] == 'Negatif']['clean_tweet'])
-            wc_neg = WordCloud(width=400, height=300, background_color='white', colormap='Reds').generate(negatif)
-            fig2, ax2 = plt.subplots()
-            ax2.imshow(wc_neg, interpolation='bilinear')
-            ax2.axis("off")
-            st.pyplot(fig2)
-
-        # Download hasil
-        st.subheader("⬇️ Unduh Hasil Prediksi")
-        def get_csv_download_link(df):
-            csv = df[['tweet', 'sentimen']].to_csv(index=False)
-            b64 = base64.b64encode(csv.encode()).decode()
-            href = f'<a href="data:file/csv;base64,{b64}" download="hasil_prediksi.csv">📥 Klik untuk unduh CSV</a>'
-            return href
-        st.markdown(get_csv_download_link(df), unsafe_allow_html=True)
+# ---------------------- Akurasi Model ---------------------- #
+st.sidebar.markdown("---")
+st.sidebar.markdown("📈 **Akurasi Model**")
+st.sidebar.success("🎯 Akurasi: 83.2% (FastText + LightGBM)")
